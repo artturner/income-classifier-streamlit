@@ -211,8 +211,24 @@ def main():
                     X_processed = create_feature_vector(input_data)
                     X_processed = preprocessor.transform(X_processed)
                 else:
+                    # Create engineered features that the original model expects
+                    input_data_processed = input_data.copy()
+                    
+                    # Create has_capital_gain feature
+                    input_data_processed['has_capital_gain'] = (input_data_processed['capital.gain'] > 0).astype(int)
+                    
+                    # Create has_capital_loss feature  
+                    input_data_processed['has_capital_loss'] = (input_data_processed['capital.loss'] > 0).astype(int)
+                    
+                    # Create native.country_grouped feature
+                    # Group less common countries as 'Other'
+                    common_countries = ['United-States', 'Mexico', 'Philippines', 'Germany', 'Canada', 'Puerto-Rico', 'El-Salvador', 'India', 'Cuba']
+                    input_data_processed['native.country_grouped'] = input_data_processed['native.country'].apply(
+                        lambda x: x if x in common_countries else 'Other'
+                    )
+                    
                     # Use original preprocessing pipeline
-                    X_processed = preprocessor.transform(input_data)
+                    X_processed = preprocessor.transform(input_data_processed)
                 
                 # Make prediction
                 prediction = model.predict(X_processed)[0]
