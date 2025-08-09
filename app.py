@@ -5,6 +5,15 @@ import numpy as np
 import warnings
 warnings.filterwarnings('ignore')
 
+# Try to import SHAP, fallback gracefully if not available
+try:
+    import shap
+    import matplotlib.pyplot as plt
+    SHAP_AVAILABLE = True
+except ImportError:
+    SHAP_AVAILABLE = False
+    st.sidebar.warning("⚠️ SHAP not available - install with: pip install shap")
+
 @st.cache_resource
 def load_model_and_preprocessor():
     """Load model and preprocessor with multiple fallback options"""
@@ -65,6 +74,50 @@ def load_model_and_preprocessor():
         
     except Exception as e:
         raise Exception(f"All model loading methods failed. Error: {str(e)}")
+
+@st.cache_resource
+def create_shap_explainer(_model, _X_sample):
+    """Create SHAP explainer for the model"""
+    if not SHAP_AVAILABLE:
+        return None
+    
+    try:
+        # Use TreeExplainer for tree-based models (XGBoost, Random Forest)
+        explainer = shap.TreeExplainer(_model)
+        return explainer
+    except Exception:
+        try:
+            # Fallback to Explainer for other models
+            explainer = shap.Explainer(_model, _X_sample)
+            return explainer
+        except Exception as e:
+            st.warning(f"Could not create SHAP explainer: {str(e)}")
+            return None
+
+def get_feature_names(input_data_processed):
+    """Get feature names for SHAP explanations"""
+    # Create a mapping of the most important features
+    feature_mapping = {
+        'age': 'Age',
+        'education.num': 'Education Years', 
+        'hours.per.week': 'Hours per Week',
+        'capital.gain': 'Capital Gain',
+        'capital.loss': 'Capital Loss',
+        'has_capital_gain': 'Has Capital Gain',
+        'has_capital_loss': 'Has Capital Loss',
+        'workclass': 'Work Class',
+        'education': 'Education Level',
+        'marital.status': 'Marital Status',
+        'occupation': 'Occupation',
+        'relationship': 'Relationship',
+        'race': 'Race',
+        'sex': 'Gender',
+        'native.country': 'Country',
+        'native.country_grouped': 'Country (Grouped)'
+    }
+    
+    # Return the original column names - the preprocessor will handle the full transformation
+    return list(input_data_processed.columns)
 
 def create_feature_vector(input_data):
     """Create a feature vector that matches the expected model input"""
@@ -258,6 +311,93 @@ def main():
                 
                 with col2:
                     st.metric("> $50,000", f"{prediction_proba[1]:.1%}")
+                
+                # SHAP Explanations
+                if SHAP_AVAILABLE and model_name != "Random Forest (Fallback)":
+                    st.subheader("🔍 Why did the model make this prediction?")
+                    st.write("SHAP values show how each feature contributed to the prediction:")
+                    
+                    try:
+                        # Create SHAP explainer
+                        explainer = create_shap_explainer(model, X_processed)
+                        
+                        if explainer is not None:
+                            # Calculate SHAP values for this prediction
+                            shap_values = explainer.shap_values(X_processed)
+                            
+                            # For binary classification, use the positive class SHAP values
+                            if len(shap_values.shape) == 3:
+                                shap_values_to_plot = shap_values[0, :, 1]  # Positive class
+                            else:
+                                shap_values_to_plot = shap_values[0]
+                            
+                            # Get feature names (simplified for display)
+                            feature_names = [
+                                'Age', 'Work Class', 'Education', 'Marital Status', 'Occupation', 
+                                'Relationship', 'Race', 'Gender', 'Capital Gain', 'Capital Loss',
+                                'Hours/Week', 'Country', 'Has Cap. Gain', 'Has Cap. Loss', 'Country (Grouped)'
+                            ]
+                            
+                            # Only show the first few features to match available names
+                            num_features_to_show = min(len(shap_values_to_plot), len(feature_names))
+                            
+                            # Create a simple visualization
+                            st.write("**Top factors influencing the prediction:**")
+                            
+                            # Get top contributing features
+                            feature_importance = list(zip(
+                                feature_names[:num_features_to_show], 
+                                shap_values_to_plot[:num_features_to_show]
+                            ))
+                            
+                            # Sort by absolute SHAP value
+                            feature_importance.sort(key=lambda x: abs(x[1]), reverse=True)
+                            
+                            # Display top 10 features
+                            for i, (feature, shap_val) in enumerate(feature_importance[:10]):
+                                direction = "↗️" if shap_val > 0 else "↘️"
+                                impact = "increases" if shap_val > 0 else "decreases"
+                                st.write(f"{direction} **{feature}**: {impact} prediction by {abs(shap_val):.3f}")
+                            
+                            # Create a simple bar chart of SHAP values
+                            fig, ax = plt.subplots(figsize=(10, 6))
+                            
+                            # Get top 10 features for plotting
+                            features_to_plot = feature_importance[:10]
+                            feature_names_plot = [x[0] for x in features_to_plot]
+                            shap_vals_plot = [x[1] for x in features_to_plot]
+                            
+                            # Create horizontal bar plot
+                            colors = ['green' if x > 0 else 'red' for x in shap_vals_plot]
+                            bars = ax.barh(range(len(feature_names_plot)), shap_vals_plot, color=colors, alpha=0.7)
+                            
+                            ax.set_yticks(range(len(feature_names_plot)))
+                            ax.set_yticklabels(feature_names_plot)
+                            ax.set_xlabel('SHAP Value (Impact on Prediction)')
+                            ax.set_title('Feature Importance for This Prediction')
+                            ax.axvline(x=0, color='black', linestyle='-', alpha=0.3)
+                            
+                            # Add value labels on bars
+                            for i, bar in enumerate(bars):
+                                width = bar.get_width()
+                                ax.text(width, bar.get_y() + bar.get_height()/2, 
+                                       f'{width:.3f}', 
+                                       ha='left' if width > 0 else 'right', 
+                                       va='center', fontsize=9)
+                            
+                            plt.tight_layout()
+                            st.pyplot(fig)
+                            
+                            st.info("🟢 Green bars push the prediction towards >$50K | 🔴 Red bars push towards ≤$50K")
+                            
+                        else:
+                            st.warning("Could not generate SHAP explanations for this model.")
+                            
+                    except Exception as e:
+                        st.warning(f"Could not generate SHAP explanations: {str(e)}")
+                
+                elif model_name == "Random Forest (Fallback)":
+                    st.info("💡 SHAP explanations are not available for the fallback model.")
                 
             except Exception as e:
                 st.error(f"Error making prediction: {str(e)}")
