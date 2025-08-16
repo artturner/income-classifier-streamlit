@@ -776,19 +776,19 @@ def main():
                                 # Calculate SHAP values for this prediction
                                 shap_values = explainer.shap_values(X_processed)
                                 
-                                # Handle different SHAP output formats
+                                # Handle different SHAP output formats and convert to float
                                 if isinstance(shap_values, list) and len(shap_values) == 2:
                                     # Binary classification with separate arrays for each class
-                                    shap_values_to_plot = shap_values[1][0]  # Positive class
-                                    expected_value = explainer.expected_value[1] if isinstance(explainer.expected_value, list) else explainer.expected_value
+                                    shap_values_to_plot = np.array(shap_values[1][0], dtype=float)  # Positive class
+                                    expected_value = float(explainer.expected_value[1] if isinstance(explainer.expected_value, list) else explainer.expected_value)
                                 elif len(shap_values.shape) == 3:
                                     # 3D array format
-                                    shap_values_to_plot = shap_values[0, :, 1]  # Positive class
-                                    expected_value = explainer.expected_value[1] if isinstance(explainer.expected_value, list) else explainer.expected_value
+                                    shap_values_to_plot = np.array(shap_values[0, :, 1], dtype=float)  # Positive class
+                                    expected_value = float(explainer.expected_value[1] if isinstance(explainer.expected_value, list) else explainer.expected_value)
                                 else:
                                     # 2D array format
-                                    shap_values_to_plot = shap_values[0]
-                                    expected_value = explainer.expected_value
+                                    shap_values_to_plot = np.array(shap_values[0], dtype=float)
+                                    expected_value = float(explainer.expected_value)
                                 
                                 # Get better feature names
                                 feature_names = get_enhanced_feature_names(input_data_processed, len(shap_values_to_plot))
@@ -797,7 +797,7 @@ def main():
                                 st.write("**How each feature impacts the prediction:**")
                                 
                                 # Get top contributing features
-                                feature_importance = list(zip(feature_names, shap_values_to_plot))
+                                feature_importance = list(zip(feature_names, [float(x) for x in shap_values_to_plot]))
                                 feature_importance.sort(key=lambda x: abs(x[1]), reverse=True)
                                 
                                 # Display top features with better formatting
@@ -814,10 +814,10 @@ def main():
                                     
                                     with col3:
                                         # Progress bar showing relative impact
-                                        max_abs_val = max([abs(x[1]) for x in feature_importance[:12]])
+                                        max_abs_val = max([abs(float(x[1])) for x in feature_importance[:12]])
                                         if max_abs_val > 0:
-                                            bar_value = abs(shap_val) / max_abs_val
-                                            st.progress(bar_value)
+                                            bar_value = float(abs(shap_val)) / max_abs_val
+                                            st.progress(min(1.0, max(0.0, bar_value)))
                                 
                                 # Enhanced bar chart
                                 fig, ax = plt.subplots(figsize=(12, 8))
@@ -859,7 +859,7 @@ def main():
                                     fig, ax = plt.subplots(figsize=(12, 8))
                                     
                                     # Calculate cumulative values for waterfall
-                                    sorted_features = sorted(zip(feature_names, shap_values_to_plot), key=lambda x: abs(x[1]), reverse=True)[:10]
+                                    sorted_features = sorted(zip(feature_names, [float(x) for x in shap_values_to_plot]), key=lambda x: abs(x[1]), reverse=True)[:10]
                                     feature_names_sorted = [x[0] for x in sorted_features]
                                     shap_vals_sorted = [x[1] for x in sorted_features]
                                     
@@ -909,7 +909,7 @@ def main():
                                 
                                 try:
                                     # Create force plot data
-                                    feature_importance = list(zip(feature_names, shap_values_to_plot))
+                                    feature_importance = list(zip(feature_names, [float(x) for x in shap_values_to_plot]))
                                     feature_importance.sort(key=lambda x: abs(x[1]), reverse=True)
                                     
                                     # Show top positive and negative contributors
@@ -933,7 +933,7 @@ def main():
                                     
                                     # Calculate the prediction components
                                     base_value = expected_value
-                                    final_value = base_value + sum(shap_values_to_plot)
+                                    final_value = base_value + sum([float(x) for x in shap_values_to_plot])
                                     
                                     # Create force plot style visualization
                                     y_pos = 0.5
@@ -942,7 +942,7 @@ def main():
                                     ax.axhline(y=y_pos, color='gray', linestyle='--', alpha=0.5)
                                     
                                     # Sort features by impact for better visualization
-                                    sorted_impacts = sorted(zip(feature_names, shap_values_to_plot, range(len(feature_names))), 
+                                    sorted_impacts = sorted(zip(feature_names, [float(x) for x in shap_values_to_plot], range(len(feature_names))), 
                                                           key=lambda x: x[1], reverse=True)
                                     
                                     # Draw arrows for each feature
