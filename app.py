@@ -619,7 +619,7 @@ def main():
                     
                     # Show top 3 individual features
                     st.write("**Top 3 Features:**")
-                    for i, (_, row) in enumerate(top_5_features[:3]):
+                    for i in range(min(3, len(importance_df))):
                         feature_name = importance_df.iloc[i]['Feature']
                         importance = importance_df.iloc[i]['Importance']
                         st.write(f"{i+1}. **{feature_name}** ({importance:.3f})")
@@ -1046,26 +1046,29 @@ def main():
                                     sorted_impacts = sorted(zip(feature_names, [float(x) for x in shap_values_to_plot], range(len(feature_names))), 
                                                           key=lambda x: x[1], reverse=True)
                                     
-                                    # Draw arrows for each feature
+                                    # Draw arrows for only top 5 most significant features to avoid overlap
                                     current_pos = base_value
-                                    arrow_height = 0.1
+                                    arrow_height = 0.15
+                                    significant_impacts = [x for x in sorted_impacts if abs(x[1]) > 0.01][:5]  # Top 5 significant features
                                     
-                                    for i, (name, impact, orig_idx) in enumerate(sorted_impacts[:10]):
-                                        if abs(impact) > 0.001:  # Only show significant impacts
-                                            color = '#2E8B57' if impact > 0 else '#DC143C'
-                                            arrow_y = y_pos + (i % 2 - 0.5) * arrow_height
-                                            
-                                            # Draw arrow
-                                            ax.annotate('', xy=(current_pos + impact, arrow_y), xytext=(current_pos, arrow_y),
-                                                       arrowprops=dict(arrowstyle='->', color=color, lw=2))
-                                            
-                                            # Add feature label
-                                            label_x = current_pos + impact/2
-                                            ax.text(label_x, arrow_y + 0.05, f'{name}\n{impact:+.3f}', 
-                                                   ha='center', va='bottom', fontsize=8, 
-                                                   bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.3))
-                                            
-                                            current_pos += impact
+                                    for i, (name, impact, orig_idx) in enumerate(significant_impacts):
+                                        color = '#2E8B57' if impact > 0 else '#DC143C'
+                                        arrow_y = y_pos + (i % 2 - 0.5) * arrow_height * 1.5  # More spacing
+                                        
+                                        # Draw arrow
+                                        ax.annotate('', xy=(current_pos + impact, arrow_y), xytext=(current_pos, arrow_y),
+                                                   arrowprops=dict(arrowstyle='->', color=color, lw=3, alpha=0.8))
+                                        
+                                        # Shorten feature names for display
+                                        display_name = name[:15] + "..." if len(name) > 15 else name
+                                        
+                                        # Add feature label with better positioning
+                                        label_x = current_pos + impact/2
+                                        ax.text(label_x, arrow_y + 0.08, f'{display_name}\n{impact:+.3f}', 
+                                               ha='center', va='bottom', fontsize=9, fontweight='bold',
+                                               bbox=dict(boxstyle='round,pad=0.4', facecolor=color, alpha=0.6, edgecolor='white'))
+                                        
+                                        current_pos += impact
                                     
                                     # Mark base and final values
                                     ax.axvline(x=base_value, color='blue', linestyle='-', alpha=0.8, linewidth=2)
@@ -1076,14 +1079,19 @@ def main():
                                     ax.text(final_value, y_pos - 0.2, f'Prediction\n{final_value:.3f}', ha='center', va='top', 
                                            fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightcoral'))
                                     
-                                    ax.set_ylim(0, 1)
+                                    ax.set_ylim(0, 1.2)  # More vertical space for labels
                                     ax.set_ylabel('Feature Contributions', fontsize=12, fontweight='bold')
                                     ax.set_xlabel('Prediction Score', fontsize=12, fontweight='bold')
-                                    ax.set_title('Force Plot - Feature Push/Pull Effects', fontsize=14, fontweight='bold')
+                                    ax.set_title('Force Plot - Top 5 Feature Push/Pull Effects', fontsize=14, fontweight='bold')
                                     ax.grid(True, alpha=0.3, axis='x')
                                     
                                     # Remove y-axis ticks as they're not meaningful
                                     ax.set_yticks([])
+                                    
+                                    # Add note about limited features
+                                    ax.text(0.02, 0.98, f'Showing top {len(significant_impacts)} most significant features', 
+                                           transform=ax.transAxes, fontsize=10, va='top',
+                                           bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgray', alpha=0.7))
                                     
                                     plt.tight_layout()
                                     st.pyplot(fig)
