@@ -966,36 +966,33 @@ def main():
                                             
                                             current_pos += impact
                                     
-                                        # Mark base and final values
-                                        ax.axvline(x=base_value, color='blue', linestyle='-', alpha=0.8, linewidth=2)
-                                        ax.axvline(x=final_value, color='red', linestyle='-', alpha=0.8, linewidth=2)
-                                        
-                                        ax.text(base_value, y_pos - 0.2, f'Base\n{base_value:.3f}', ha='center', va='top', 
-                                               fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightblue'))
-                                        ax.text(final_value, y_pos - 0.2, f'Prediction\n{final_value:.3f}', ha='center', va='top', 
-                                               fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightcoral'))
-                                        
-                                        ax.set_ylim(0, 1)
-                                        ax.set_ylabel('Feature Contributions', fontsize=12, fontweight='bold')
-                                        ax.set_xlabel('Prediction Score', fontsize=12, fontweight='bold')
-                                        ax.set_title('Force Plot - Feature Push/Pull Effects', fontsize=14, fontweight='bold')
-                                        ax.grid(True, alpha=0.3, axis='x')
-                                        
-                                        # Remove y-axis ticks as they're not meaningful
-                                        ax.set_yticks([])
-                                        
-                                        plt.tight_layout()
-                                        st.pyplot(fig)
-                                        
-                                        # Explanation
-                                        st.info("🎯 This plot shows how each feature 'pushes' the prediction from the base value toward the final prediction")
-                                        
-                                    except Exception as e:
-                                        st.error(f"Could not create force plot: {str(e)}")
-                                
-                            else:
-                                st.warning("Could not generate SHAP explanations for this model.")
-                                
+                                    # Mark base and final values
+                                    ax.axvline(x=base_value, color='blue', linestyle='-', alpha=0.8, linewidth=2)
+                                    ax.axvline(x=final_value, color='red', linestyle='-', alpha=0.8, linewidth=2)
+                                    
+                                    ax.text(base_value, y_pos - 0.2, f'Base\n{base_value:.3f}', ha='center', va='top', 
+                                           fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightblue'))
+                                    ax.text(final_value, y_pos - 0.2, f'Prediction\n{final_value:.3f}', ha='center', va='top', 
+                                           fontweight='bold', bbox=dict(boxstyle='round', facecolor='lightcoral'))
+                                    
+                                    ax.set_ylim(0, 1)
+                                    ax.set_ylabel('Feature Contributions', fontsize=12, fontweight='bold')
+                                    ax.set_xlabel('Prediction Score', fontsize=12, fontweight='bold')
+                                    ax.set_title('Force Plot - Feature Push/Pull Effects', fontsize=14, fontweight='bold')
+                                    ax.grid(True, alpha=0.3, axis='x')
+                                    
+                                    # Remove y-axis ticks as they're not meaningful
+                                    ax.set_yticks([])
+                                    
+                                    plt.tight_layout()
+                                    st.pyplot(fig)
+                                    
+                                    # Explanation
+                                    st.info("🎯 This plot shows how each feature 'pushes' the prediction from the base value toward the final prediction")
+                                    
+                                except Exception as e:
+                                    st.error(f"Could not create force plot: {str(e)}")
+                            
                         except Exception as e:
                             st.warning(f"Could not generate SHAP explanations: {str(e)}")
                     
