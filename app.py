@@ -189,11 +189,20 @@ def generate_counterfactuals(original_data, model, preprocessor, target_class, m
     """Generate counterfactual explanations by finding minimal changes to flip prediction"""
     
     counterfactuals = []
+    debug_info = []
     
-    # Define modification strategies
+    # Get original values
+    orig_education = original_data['education'].iloc[0]
+    orig_occupation = original_data['occupation'].iloc[0]
+    orig_hours = original_data['hours.per.week'].iloc[0]
+    orig_marital = original_data['marital.status'].iloc[0]
+    orig_capital_gain = original_data['capital.gain'].iloc[0]
+    
+    # Define comprehensive modification strategies
     strategies = [
+        # Education upgrades
         {
-            'name': 'Education Boost',
+            'name': 'Bachelor\'s Degree',
             'changes': {
                 'education': 'Bachelors',
                 'education.num': 13
@@ -201,7 +210,7 @@ def generate_counterfactuals(original_data, model, preprocessor, target_class, m
             'feasibility_factors': {'age_appropriate': True, 'career_change': False}
         },
         {
-            'name': 'Advanced Education',
+            'name': 'Master\'s Degree',
             'changes': {
                 'education': 'Masters',
                 'education.num': 14
@@ -209,41 +218,96 @@ def generate_counterfactuals(original_data, model, preprocessor, target_class, m
             'feasibility_factors': {'age_appropriate': True, 'career_change': False}
         },
         {
-            'name': 'Career Advancement',
+            'name': 'Doctorate Degree',
+            'changes': {
+                'education': 'Doctorate',
+                'education.num': 16
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': False}
+        },
+        # Career changes
+        {
+            'name': 'Executive Management',
             'changes': {
                 'occupation': 'Exec-managerial',
-                'hours.per.week': 50
+                'hours.per.week': max(45, orig_hours + 10)
             },
             'feasibility_factors': {'age_appropriate': True, 'career_change': True}
         },
         {
-            'name': 'Professional Role',
+            'name': 'Professional Specialty',
             'changes': {
                 'occupation': 'Prof-specialty',
-                'education': 'Bachelors'
+                'education': 'Bachelors' if orig_education in ['HS-grad', '11th', '9th', '10th', '12th'] else orig_education
             },
             'feasibility_factors': {'age_appropriate': True, 'career_change': True}
         },
         {
-            'name': 'Increased Hours',
+            'name': 'Technology Role',
             'changes': {
-                'hours.per.week': min(60, original_data['hours.per.week'].iloc[0] + 20)
+                'occupation': 'Tech-support',
+                'education': 'Some-college' if orig_education in ['HS-grad', '11th', '9th', '10th', '12th'] else orig_education
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': True}
+        },
+        # Work changes
+        {
+            'name': 'Increased Work Hours',
+            'changes': {
+                'hours.per.week': min(60, orig_hours + 20)
             },
             'feasibility_factors': {'age_appropriate': True, 'career_change': False}
         },
         {
-            'name': 'Marriage Benefit',
+            'name': 'Full-time Professional',
+            'changes': {
+                'hours.per.week': 50,
+                'occupation': 'Prof-specialty'
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': True}
+        },
+        # Life changes
+        {
+            'name': 'Marriage',
             'changes': {
                 'marital.status': 'Married-civ-spouse'
             },
             'feasibility_factors': {'age_appropriate': True, 'career_change': False}
         },
+        # Financial changes
         {
             'name': 'Investment Income',
             'changes': {
                 'capital.gain': 5000
             },
             'feasibility_factors': {'age_appropriate': True, 'career_change': False}
+        },
+        {
+            'name': 'Significant Investment',
+            'changes': {
+                'capital.gain': 15000
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': False}
+        },
+        # Combined strategies
+        {
+            'name': 'Career + Education Boost',
+            'changes': {
+                'education': 'Bachelors',
+                'education.num': 13,
+                'occupation': 'Exec-managerial',
+                'hours.per.week': max(45, orig_hours + 5)
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': True}
+        },
+        {
+            'name': 'Professional + Marriage',
+            'changes': {
+                'occupation': 'Prof-specialty',
+                'marital.status': 'Married-civ-spouse',
+                'education': 'Bachelors' if orig_education in ['HS-grad', '11th', '9th', '10th', '12th'] else orig_education
+            },
+            'feasibility_factors': {'age_appropriate': True, 'career_change': True}
         }
     ]
     
@@ -253,23 +317,51 @@ def generate_counterfactuals(original_data, model, preprocessor, target_class, m
             modified_data = original_data.copy()
             
             # Apply changes
+            changes_applied = 0
             for feature, new_value in strategy['changes'].items():
                 if feature in modified_data.columns:
-                    modified_data[feature] = new_value
+                    old_value = modified_data[feature].iloc[0]
+                    if old_value != new_value:  # Only apply if actually different
+                        modified_data[feature] = new_value
+                        changes_applied += 1
             
-            # Re-engineer features if needed
+            # Skip if no actual changes were made
+            if changes_applied == 0:
+                continue
+            
+            # Re-engineer features that depend on capital gains/losses
             if 'capital.gain' in strategy['changes']:
                 modified_data['has_capital_gain'] = (modified_data['capital.gain'] > 0).astype(int)
             if 'capital.loss' in strategy['changes']:
                 modified_data['has_capital_loss'] = (modified_data['capital.loss'] > 0).astype(int)
+            
+            # Update country grouping if needed
+            if 'native.country' in strategy['changes']:
+                common_countries = ['United-States', 'Mexico', 'Philippines', 'Germany', 'Canada', 'Puerto-Rico', 'El-Salvador', 'India', 'Cuba']
+                modified_data['native.country_grouped'] = modified_data['native.country'].apply(
+                    lambda x: x if x in common_countries else 'Other'
+                )
             
             # Make prediction
             X_modified = preprocessor.transform(modified_data)
             new_prediction = model.predict(X_modified)[0]
             new_prediction_proba = model.predict_proba(X_modified)[0]
             
-            # Check if prediction flipped to target class
-            if new_prediction == target_class:
+            # Store debug info
+            debug_info.append({
+                'strategy': strategy['name'],
+                'original_pred': 1 - target_class,
+                'new_pred': new_prediction,
+                'target': target_class,
+                'flipped': new_prediction == target_class,
+                'prob_change': new_prediction_proba[target_class] - new_prediction_proba[1-target_class]
+            })
+            
+            # Check if prediction flipped to target class OR significantly moved toward target
+            prediction_flipped = new_prediction == target_class
+            significant_improvement = (new_prediction_proba[target_class] - new_prediction_proba[1-target_class]) > 0.1
+            
+            if prediction_flipped or significant_improvement:
                 # Calculate feasibility score
                 feasibility_score = calculate_feasibility(
                     original_data, strategy, strategy['feasibility_factors']
@@ -285,16 +377,25 @@ def generate_counterfactuals(original_data, model, preprocessor, target_class, m
                             change_descriptions.append(change_desc)
                 
                 if change_descriptions:  # Only add if there are actual changes
+                    # Calculate probability change correctly
+                    original_target_prob = new_prediction_proba[1-target_class] if target_class == 0 else new_prediction_proba[0]
+                    prob_change = new_prediction_proba[target_class] - original_target_prob
+                    
                     counterfactual = {
                         'name': strategy['name'],
                         'changes': change_descriptions,
                         'new_probability': new_prediction_proba[target_class],
-                        'probability_change': new_prediction_proba[target_class] - (1 - new_prediction_proba[target_class]),
-                        'feasibility_score': feasibility_score
+                        'probability_change': prob_change,
+                        'feasibility_score': feasibility_score,
+                        'prediction_flipped': prediction_flipped
                     }
                     counterfactuals.append(counterfactual)
                     
         except Exception as e:
+            debug_info.append({
+                'strategy': strategy['name'],
+                'error': str(e)
+            })
             continue  # Skip failed strategies
     
     # Sort by feasibility score (descending)
@@ -1198,47 +1299,95 @@ def main():
                                 )
                             
                                 if counterfactuals:
-                                    st.write("**💡 Here are some scenarios that would change the prediction:**")
-                                
-                                    for i, cf in enumerate(counterfactuals[:3], 1):
-                                        with st.container():
-                                            st.markdown(f"**Scenario {i}:**")
+                                    # Separate complete flips from improvements
+                                    complete_flips = [cf for cf in counterfactuals if cf.get('prediction_flipped', False)]
+                                    improvements = [cf for cf in counterfactuals if not cf.get('prediction_flipped', False)]
+                                    
+                                    if complete_flips:
+                                        st.write("**🎯 Scenarios that would flip the prediction:**")
                                         
-                                            col1, col2 = st.columns([2, 1])
+                                        for i, cf in enumerate(complete_flips[:3], 1):
+                                            with st.container():
+                                                st.markdown(f"**✅ Scenario {i}: {cf['name']}**")
+                                                
+                                                col1, col2 = st.columns([2, 1])
+                                                
+                                                with col1:
+                                                    for change in cf['changes']:
+                                                        st.write(f"• {change}")
+                                                
+                                                with col2:
+                                                    st.metric(
+                                                        "New Probability", 
+                                                        f"{cf['new_probability']:.1%}",
+                                                        delta=f"{cf['probability_change']:+.1%}"
+                                                    )
+                                                
+                                                # Show feasibility score
+                                                feasibility = cf['feasibility_score']
+                                                if feasibility > 0.8:
+                                                    feasibility_color = "🟢"
+                                                    feasibility_text = "Highly Feasible"
+                                                elif feasibility > 0.6:
+                                                    feasibility_color = "🟡"
+                                                    feasibility_text = "Moderately Feasible" 
+                                                else:
+                                                    feasibility_color = "🔴"
+                                                    feasibility_text = "Challenging"
+                                            
+                                                st.write(f"{feasibility_color} **Feasibility:** {feasibility_text} ({feasibility:.1%})")
+                                                st.write("---")
+                                    
+                                    if improvements:
+                                        st.write("**📈 Scenarios that would significantly improve the prediction:**")
                                         
-                                            with col1:
-                                                for change in cf['changes']:
-                                                    st.write(f"• {change}")
-                                        
-                                            with col2:
-                                                st.metric(
-                                                    "New Probability", 
-                                                    f"{cf['new_probability']:.1%}",
-                                                    delta=f"{cf['probability_change']:+.1%}"
-                                                )
-                                        
-                                            # Show feasibility score
-                                            feasibility = cf['feasibility_score']
-                                            if feasibility > 0.8:
-                                                feasibility_color = "🟢"
-                                                feasibility_text = "Highly Feasible"
-                                            elif feasibility > 0.6:
-                                                feasibility_color = "🟡"
-                                                feasibility_text = "Moderately Feasible" 
-                                            else:
-                                                feasibility_color = "🔴"
-                                                feasibility_text = "Challenging"
-                                        
-                                            st.write(f"{feasibility_color} **Feasibility:** {feasibility_text} ({feasibility:.1%})")
-                                            st.write("---")
+                                        for i, cf in enumerate(improvements[:3], 1):
+                                            with st.container():
+                                                st.markdown(f"**⬆️ Improvement {i}: {cf['name']}**")
+                                                
+                                                col1, col2 = st.columns([2, 1])
+                                                
+                                                with col1:
+                                                    for change in cf['changes']:
+                                                        st.write(f"• {change}")
+                                                
+                                                with col2:
+                                                    st.metric(
+                                                        "New Probability", 
+                                                        f"{cf['new_probability']:.1%}",
+                                                        delta=f"{cf['probability_change']:+.1%}"
+                                                    )
+                                                
+                                                # Show feasibility score
+                                                feasibility = cf['feasibility_score']
+                                                if feasibility > 0.8:
+                                                    feasibility_color = "🟢"
+                                                    feasibility_text = "Highly Feasible"
+                                                elif feasibility > 0.6:
+                                                    feasibility_color = "🟡"
+                                                    feasibility_text = "Moderately Feasible" 
+                                                else:
+                                                    feasibility_color = "🔴"
+                                                    feasibility_text = "Challenging"
+                                            
+                                                st.write(f"{feasibility_color} **Feasibility:** {feasibility_text} ({feasibility:.1%})")
+                                                st.write("---")
                                 
                                     # Summary insights
                                     st.markdown("**🎯 Key Insights:**")
                                     insights = analyze_counterfactuals(counterfactuals)
                                     for insight in insights:
                                         st.write(f"• {insight}")
+                                        
+                                    if not complete_flips and improvements:
+                                        st.info("💡 While no scenarios completely flip the prediction, several can significantly improve the outcome.")
+                                        
                                 else:
                                     st.warning("Could not generate meaningful counterfactual scenarios.")
+                                    st.write("**Possible reasons:**")
+                                    st.write("• The current prediction may already be very strong")
+                                    st.write("• The model may be highly confident in its decision")  
+                                    st.write("• Try different input values to explore other scenarios")
                                 
                             except Exception as e:
                                 st.error(f"Error generating counterfactuals: {str(e)}")
